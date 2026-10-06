@@ -55,4 +55,52 @@ describe('Luggage planner App', () => {
     await wrapper.get('[data-testid="print-button"]').trigger('click');
     expect(getPrintCount()).toBe(1);
   });
+
+  it('renders the frozen packing sheet with numbered entries and matching projections', async () => {
+    const { wrapper } = render();
+    await wrapper.get('[data-testid="print-button"]').trigger('click');
+    await wrapper.vm.$nextTick();
+
+    const sheet = wrapper.get('[data-testid="print-prep"]');
+    expect(sheet.text()).toContain('装箱单已按本次方案冻结');
+
+    const printed = wrapper.getComponent({ name: 'PrintSheet' });
+    const rows = printed.findAll('.print-packed tbody tr[data-item-id]');
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0].get('.col-no').text()).toBe('1');
+    expect(printed.text()).toContain('已装物品');
+    expect(printed.text()).toContain('未装入物品及原因');
+    expect(printed.text()).toContain('实际方向');
+
+    // 打印单上的两幅投影使用与清单相同的编号。
+    const projections = printed.findAllComponents({ name: 'PackingProjection' });
+    expect(projections).toHaveLength(2);
+    const topNumbers = projections[0].findAll('.projection-block').map((block) => block.attributes('data-number'));
+    expect(topNumbers).toEqual(rows.map((_, index) => String(index + 1)));
+  });
+
+  it('refuses to print stale plans and offers recalculation or cancel', async () => {
+    const { wrapper, getPrintCount } = render();
+    await wrapper.get('[aria-label="物品名称"]').setValue('雨靴');
+    await wrapper.get('[data-testid="item-editor"]').trigger('submit');
+
+    await wrapper.get('[data-testid="print-button"]').trigger('click');
+    const gate = wrapper.get('[data-testid="print-gate"]');
+    expect(gate.text()).toContain('不能打印当前单据');
+    expect(getPrintCount()).toBe(0);
+
+    // 取消打印回到工作台，策略与物品保持不变。
+    const selectedBefore = wrapper.get('.plan-tabs button.active').attributes('data-plan');
+    await wrapper.get('[data-testid="print-cancel-gate"]').trigger('click');
+    expect(wrapper.find('[data-testid="print-gate"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('雨靴');
+    expect(wrapper.get('.plan-tabs button.active').attributes('data-plan')).toBe(selectedBefore);
+
+    // 重新计算并打印才冻结新清单。
+    await wrapper.get('[data-testid="print-button"]').trigger('click');
+    await wrapper.get('[data-testid="print-regenerate"]').trigger('click');
+    expect(getPrintCount()).toBe(1);
+    const printed = wrapper.getComponent({ name: 'PrintSheet' });
+    expect(printed.text()).toContain('雨靴');
+  });
 });
