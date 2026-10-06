@@ -48,6 +48,14 @@ export interface PackingSnapshot {
   selectedPlan: PlanMode;
 }
 
+/** 发起打印时冻结的快照：打印准备期间的状态变更不会混入已固定的装箱单。 */
+export interface PrintJob {
+  suitcase: Suitcase;
+  items: PackingItem[];
+  plan: PackingPlan;
+  risks: Risk[];
+}
+
 export function itemVolume(item: Dimensions): number {
   return item.length * item.width * item.height;
 }

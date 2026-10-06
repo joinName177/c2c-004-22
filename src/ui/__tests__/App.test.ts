@@ -44,15 +44,50 @@ describe('Luggage planner App', () => {
     const { wrapper } = render();
     await wrapper.get('[data-plan="shopping"]').trigger('click');
     expect(wrapper.get('[data-plan="shopping"]').classes()).toContain('active');
-    const jacket = wrapper.findAll('[data-item-id="jacket"]');
+    const canvas = wrapper.get('.canvas-panel');
+    const jacket = canvas.findAll('[data-item-id="jacket"]');
     expect(jacket.length).toBe(2);
     await jacket[0].trigger('click');
-    expect(wrapper.findAll('[data-item-id="jacket"].selected')).toHaveLength(2);
+    expect(canvas.findAll('[data-item-id="jacket"].selected')).toHaveLength(2);
   });
 
   it('delegates printing through the print port', async () => {
     const { wrapper, getPrintCount } = render();
     await wrapper.get('[data-testid="print-button"]').trigger('click');
     expect(getPrintCount()).toBe(1);
+  });
+
+  it('blocks printing while the plan is stale until recalculated or canceled', async () => {
+    const { wrapper, getPrintCount } = render();
+    await wrapper.get('[aria-label="物品名称"]').setValue('新物品');
+    await wrapper.get('[data-testid="item-editor"]').trigger('submit');
+
+    await wrapper.get('[data-testid="print-button"]').trigger('click');
+    expect(getPrintCount()).toBe(0);
+    expect(wrapper.find('[data-testid="print-cancel"]').exists()).toBe(true);
+
+    await wrapper.get('[data-testid="print-cancel"]').trigger('click');
+    expect(wrapper.find('[data-testid="print-cancel"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('新物品');
+    expect(wrapper.get('[data-plan="comfort"]').classes()).toContain('active');
+    expect(getPrintCount()).toBe(0);
+
+    await wrapper.get('[data-testid="print-button"]').trigger('click');
+    await wrapper.get('[data-testid="print-recalculate"]').trigger('click');
+    expect(getPrintCount()).toBe(1);
+    expect(wrapper.find('[data-testid="print-cancel"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('规划已同步');
+  });
+
+  it('prints a frozen sheet so switching plans during preparation cannot mix data', async () => {
+    let printedText = '';
+    const wrapper = mount(App, { props: {
+      repository: new LocalPlannerRepository(new MemoryStorage()),
+      printPort: { print: () => { printedText = wrapper.get('[data-testid="print-sheet"]').text(); } },
+    } });
+    await wrapper.get('[data-testid="print-button"]').trigger('click');
+    expect(printedText).toContain('方案：舒适版');
+    await wrapper.get('[data-plan="shopping"]').trigger('click');
+    expect(printedText).not.toContain('购物版');
   });
 });
